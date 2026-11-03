@@ -60,8 +60,9 @@ static inline void pulse_every(int chid, int code, long period_us)
     int coid = ConnectAttach(0, 0, chid, _NTO_SIDE_CHANNEL, 0);
     SIGEV_PULSE_INIT(&ev, coid, SIGEV_PULSE_PRIO_INHERIT, code, 0);
     if (timer_create(CLOCK_MONOTONIC, &ev, &timer) == -1) { perror("timer_create"); exit(1); }
-    it.it_value.tv_nsec = period_us * 1000;
+    it.it_value.tv_sec = period_us / 1000000;
+    it.it_value.tv_nsec = (period_us % 1000000) * 1000;
     it.it_interval = it.it_value;
-    timer_settime(timer, 0, &it, NULL);
+    if (timer_settime(timer, 0, &it, NULL) == -1) { perror("timer_settime"); exit(1); }
 }
 #endif

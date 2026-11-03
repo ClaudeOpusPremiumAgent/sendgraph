@@ -16,7 +16,7 @@ The rule is easy to break by accident and hard to test, because the hang needs a
 | 5 ms | 200 ms | 4 of 6 | 90 s |
 | 10 ms | 499 ms | 6 of 6, all within about 8 s | 60 s |
 | 10 ms | 500 ms | 3 of 9, each within about 6 s | 60 or 300 s |
-| 10 ms | 1 s | 0 of 4 | 120 s |
+| 10 ms | 1 s | 0 of 3 | 120 s |
 
 Moving the rotation by 1 ms decides whether a soak test catches this. At 500 ms, six of the nine runs passed their whole soak, up to 5 minutes. At 499 ms, every run hung within seconds. The likely reason is that 499 ms sweeps through every phase of the 10 ms reading while 500 ms stays on one, though I measured this and did not prove the cause. A passing soak test says little about this kind of bug.
 
