@@ -8,9 +8,19 @@ For QNX 8.0, on QEMU x86_64 or any target that can run `tracelogger`. Built with
 
 On QNX, services talk through blocking `MsgSend`. A thread that sends cannot receive until the answer comes back. If A sends to B, B sends to C and C sends to A at the wrong moment, all three stop for good, and the QNX documentation warns against exactly this with its send hierarchy rule: threads should only send to a lower level.
 
-The rule is easy to break by accident and hard to test, because the hang needs an unlucky interleaving. The plant in [demo/](demo/) has that bug on one rare path, and this is what the bug does at two rates:
+The rule is easy to break by accident and hard to test, because the hang needs an unlucky interleaving. The plant in [demo/](demo/) has that bug on one path, which runs when its log rotates. Measured on QNX 8.0 in QEMU with 2 virtual CPUs:
 
-RESULTS_TABLE
+| Reading every | Log rotates every | Runs that hung | Limit per run |
+| --- | --- | --- | --- |
+| 2 ms | 50 ms | 11 of 12 | 90 s |
+| 5 ms | 200 ms | 4 of 6 | 90 s |
+| 10 ms | 499 ms | 6 of 6, all within about 8 s | 60 s |
+| 10 ms | 500 ms | 3 of 9, each within about 6 s | 60 or 300 s |
+| 10 ms | 1 s | 0 of 4 | 120 s |
+
+Moving the rotation by 1 ms decides whether a soak test catches this. At 500 ms, six of the nine runs passed their whole soak, up to 5 minutes. At 499 ms, every run hung within seconds. The likely reason is that 499 ms sweeps through every phase of the 10 ms reading while 500 ms stays on one, though I measured this and did not prove the cause. A passing soak test says little about this kind of bug.
+
+The two fixes held at the rates that hung most: the `thread` and `pulse` builds had 0 hangs in 6 runs of 90 s at 2 ms and 50 ms, and 0 hangs in 4 runs of 60 s each at 10 ms and 499 ms.
 
 `pidin` can show you the three blocked threads once it has happened. Sendgraph tells you from a trace of the system working normally:
 
@@ -35,7 +45,7 @@ Cycle 1: control -> logger -> sensor -> control
 4. A cycle of those waits is the report. The analysis works on channels and not processes, so a process that keeps a separate thread and channel for callbacks is correctly clean. A process-level graph would flag it.
 5. A thread pool changes the meaning, so the report says how many requests must be stuck at once. A cycle where one channel has a single thread fails the exit code. A cycle where every channel has a pool is reported as a warning, and fails only with `--strict`.
 
-A system that has already stopped produces no trace events, so a trace of it shows nothing. For that case, `pidin | sendgraph --snapshot` reads who each blocked thread waits for and confirms the loop.
+A system that has already stopped produces no trace events, so a trace alone would look clean. For that case, `pidin | sendgraph --snapshot` reads who each blocked thread waits for and confirms the loop. [src/sgcapture](src/sgcapture) always does this first.
 
 ## Try it without QNX
 
@@ -65,7 +75,7 @@ You need QNX SDP 8.0 in `~/qnx800` with a licence ([free for non-commercial use]
 ./dev.sh image/vm.sh image/demo.sh
 ```
 
-See each build of the plant traced on a real QNX 8.0 system in QEMU, then the plain build hung and confirmed with `--snapshot`. The reports land in `image/out/`.
+See each build of the plant traced on a real QNX 8.0 system in QEMU, then the plain build hung and confirmed by snapshot. The plain build can hang before its trace begins, as the table above shows. You then see `DEADLOCK NOW` and no report for that build, which is the same bug. The reports land in `image/out/`.
 
 Without Docker, source `qnxsdp-env.sh`, install `qemu-system-x86_64`, and run the same commands without `./dev.sh`.
 
