@@ -13,4 +13,4 @@ for v in plain thread pulse; do
 done
 echo "=== the plain build at stress rates, after it has hung"
 vm_ssh 'cd /data/sendgraph; ./logger -r 2000 >/dev/null 2>&1 & ./control >/dev/null 2>&1 & ./sensor -p 1000 >/dev/null 2>&1 & sleep 5; ./sgcapture 1; echo "(exit code $?)"; slay -f logger control sensor; true'
-echo "Reports: image/out/report-plain.html, report-thread.html, report-pulse.html"
+echo "Reports, for each build that reached a trace: image/out/report-*.html"

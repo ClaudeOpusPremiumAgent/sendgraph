@@ -10,7 +10,7 @@ case "$variant" in
   pulse)  sensor_args="";   logger_args="-a" ;;
   *) echo "usage: run.sh <plain|thread|pulse>" >&2; exit 2 ;;
 esac
-./logger -r 500000 $logger_args >/dev/null 2>&1 & l=$!
+./logger -r 1000000 $logger_args >/dev/null 2>&1 & l=$!
 ./control >/dev/null 2>&1 & c=$!
 ./sensor -p 10000 $sensor_args >/dev/shmem/sensor.out 2>&1 & s=$!
 sleep 1
