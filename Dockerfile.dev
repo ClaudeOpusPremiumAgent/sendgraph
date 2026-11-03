@@ -1,0 +1,7 @@
+# Host side of the build: g++ for the host tool, QEMU to boot the QNX image, and what mkqnximage expects.
+# The QNX SDP is not in this image. It is mounted read-only from your own install; see dev.sh.
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential qemu-system-x86 qemu-utils openssh-client python3 file procps iproute2 net-tools bsdextrautils gawk \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app

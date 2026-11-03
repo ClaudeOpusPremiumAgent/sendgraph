@@ -1,0 +1,5 @@
+build/
+.home/
+image/out/
+video/out/
+*.kev

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Traces this QNX system for a while and checks the trace, all on the target.
+# usage: sgcapture [seconds] [sendgraph options]
+# Keeps the raw capture in $SG_KEV (default /dev/shmem/sendgraph.kev) to copy to a host.
+seconds=${1:-3}
+[ $# -gt 0 ] && shift
+kev=${SG_KEV:-/dev/shmem/sendgraph.kev}
+here=$(dirname "$0")
+tracelogger -w -n 0 -s "$seconds" -f "$kev" >/dev/null 2>&1 || { echo "tracelogger failed. Is this procnto-smp-instr?" >&2; exit 2; }
+traceprinter -f "$kev" | "$here/sendgraph" "$@"
