@@ -15,15 +15,18 @@ qnx: $(DEMO:%=build/qnx/%) build/qnx/soak.sh build/qnx/run.sh build/qnx/sgcaptur
 
 build/qnx/sendgraph: src/sendgraph.cpp
 	@mkdir -p build/qnx
-	$(QCC) -Vgcc_ntox86_64_gpp -std=gnu++17 -O2 -Wall -Wextra -static-libstdc++ $< -o $@
+	$(QCC) -Vgcc_ntox86_64_gpp -std=gnu++17 -O2 -Wall -Wextra $< -o $@
 
 build/qnx/%: demo/%.c demo/plant.h
 	@mkdir -p build/qnx
 	$(QCC) $(QFLAGS) $< -o $@
 
+test: host
+	python3 tests/run.py build/host/sendgraph
+
 clean:
 	rm -rf build
-.PHONY: host qnx clean
+.PHONY: host qnx test clean
 
 build/qnx/soak.sh: demo/soak.sh
 	@mkdir -p build/qnx

@@ -5,6 +5,7 @@ set -e
 cd "$(dirname "$0")"
 QNX_ROOT="${QNX_ROOT:-$HOME/qnx800}"
 mkdir -p .home
+docker image inspect sendgraph-dev >/dev/null 2>&1 || docker build -q -t sendgraph-dev -f Dockerfile.dev . >/dev/null
 docker network inspect sendgraph-net >/dev/null 2>&1 || docker network create --opt com.docker.network.driver.mtu=1280 sendgraph-net >/dev/null
 KVM=""; [ -e /dev/kvm ] && KVM="--device /dev/kvm --group-add $(stat -c %g /dev/kvm)"
 exec docker run --rm -i --network sendgraph-net $KVM --user "$(id -u):$(id -g)" \

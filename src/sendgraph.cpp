@@ -72,6 +72,7 @@ struct Analysis {
     std::map<std::pair<int, long>, ChannelId> connections;  // (client pid, coid) -> channel
     std::map<ThreadId, Message> blocked;                 // sends with no reply yet, per client thread
     std::vector<Message> unresolved;                     // received before we knew the channel
+    std::map<std::pair<ThreadId, ChannelId>, uint64_t> waits;  // longest wait of a thread on a channel
     uint64_t cycles_per_sec = 0, last_t = 0;
     long events = 0, messages = 0;
     int next_unknown_chid = -1;
@@ -163,7 +164,8 @@ class Parser {
             if (!m.received) {
                 auto c = a_.connections.find({m.client.pid, m.coid});
                 m.channel = c != a_.connections.end() ? c->second : only_channel(m.server.pid);
-                add_send_edges(m, a_.last_t - m.sent_t);
+                add_send_edges(m);
+                note_wait(m, a_.last_t);
                 a_.receivers[m.channel];
             }
         }
@@ -260,7 +262,8 @@ class Parser {
         a_.receivers[channel].insert(m.server);
         if (m.coid >= 0) a_.connections[{m.client.pid, m.coid}] = channel;
         a_.threads[m.server].held[channel.chid]++;
-        add_send_edges(m, m.recv_t >= m.sent_t ? m.recv_t - m.sent_t : 0);
+        add_send_edges(m);
+        note_wait(m, m.recv_t);
         a_.threads[m.client].sends.push_back({m.sent_t, m});
         // Keep the channel on the live record too, for the reply.
         for (auto &kv : a_.in_flight)
@@ -276,7 +279,7 @@ class Parser {
     }
 
     // Every channel the sender serves now waits for the destination.
-    void add_send_edges(const Message &m, uint64_t wait) {
+    void add_send_edges(const Message &m) {
         const ThreadState &t = a_.threads[m.client];
         for (auto &kv : a_.receivers) {
             if (kv.first.pid != m.client.pid || !kv.second.count(m.client)) continue;
@@ -288,9 +291,13 @@ class Parser {
                 e.sender = m.client;
                 e.msg_type = m.type;
             }
-            e.max_wait = std::max(e.max_wait, wait);
         }
         pending_edges_.push_back(m);
+    }
+
+    void note_wait(const Message &m, uint64_t until) {
+        uint64_t &w = a_.waits[{m.client, m.channel}];
+        if (until > m.sent_t) w = std::max(w, until - m.sent_t);
     }
 
     // A thread can begin serving a channel after it has already sent, so sends are replayed at the end.
@@ -305,11 +312,7 @@ class Parser {
         auto &held = a_.threads[m.server].held;
         auto h = held.find(m.channel.chid);
         if (h != held.end() && h->second > 0) h->second--;
-        if (t > m.sent_t) {
-            for (auto &kv : a_.edges)
-                if (kv.second.to == m.channel && kv.second.sender == m.client)
-                    kv.second.max_wait = std::max(kv.second.max_wait, t - m.sent_t);
-        }
+        note_wait(m, t);
         if (replier == m.server) return;
         // Deferred reply: the thread that answered was doing other sends on this client's behalf.
         const ThreadState &w = a_.threads[replier];
@@ -340,6 +343,15 @@ class Parser {
                 e.first_t = m.sent_t;
                 e.sender = m.client;
                 e.msg_type = m.type;
+            }
+        }
+        // Each edge's longest wait, over every thread that serves its source.
+        for (auto &kv : a_.edges) {
+            Edge &e = kv.second;
+            auto served = a_.receivers.find(e.from);
+            for (const auto &w : a_.waits) {
+                bool serves = served != a_.receivers.end() && served->second.count(w.first.first);
+                if (w.first.second == e.to && (serves || w.first.first == e.sender)) e.max_wait = std::max(e.max_wait, w.second);
             }
         }
     }
@@ -508,6 +520,7 @@ std::vector<Cycle> find_cycles(const Analysis &a, std::vector<std::vector<Channe
         }
         out.push_back(c);
     }
+    std::stable_sort(out.begin(), out.end(), [](const Cycle &x, const Cycle &y) { return x.capacity < y.capacity; });
     return out;
 }
 
@@ -569,26 +582,33 @@ void print_edge_evidence(const Analysis &a, const Edge &e, std::ostream &out) {
 void print_report(const Analysis &a, const std::vector<Cycle> &cycles, const std::map<ChannelId, int> &level, std::ostream &out) {
     out << "Sendgraph: " << a.messages << " messages between " << a.receivers.size() << " channels, "
         << a.edges.size() << " wait edges.\n\n";
+    size_t certain = 0;
+    for (const Cycle &c : cycles)
+        if (c.capacity <= 1) certain++;
     if (cycles.empty()) {
-        out << "No wait cycles. No deadlock through message passing on the paths this trace exercised.\n";
+        out << "No wait cycles on the paths this trace exercised.\n";
+    } else if (certain) {
+        out << "POSSIBLE DEADLOCK: " << certain << " wait cycle" << (certain == 1 ? "" : "s")
+            << " that one unlucky interleaving can hang. The trace does not have to contain the hang for this to be true.\n";
     } else {
-        out << "POSSIBLE DEADLOCK: " << cycles.size() << " wait cycle" << (cycles.size() == 1 ? "" : "s")
-            << ". The trace does not have to contain the hang for this to be true.\n";
-        int n = 0;
-        for (const Cycle &c : cycles) {
-            out << "\nCycle " << ++n << ": ";
-            for (const ChannelId &ch : c.path) out << channel_name(a, ch) << " -> ";
-            out << channel_name(a, c.path[0]) << "\n";
-            if (c.capacity <= 1) {
-                out << "  A single thread serves one of these channels, so one unlucky interleaving hangs them all.\n";
-            } else {
-                out << "  Every channel here has a thread pool, the smallest of " << c.capacity
-                    << " threads. It hangs when " << c.capacity << " requests are in this cycle at once.\n";
-            }
-            for (size_t i = 0; i < c.path.size(); i++) {
-                auto e = a.edges.find({c.path[i], c.path[(i + 1) % c.path.size()]});
-                if (e != a.edges.end()) print_edge_evidence(a, e->second, out);
-            }
+        out << "No single-thread wait cycles. " << cycles.size() << " cycle" << (cycles.size() == 1 ? "" : "s")
+            << " through thread pools, which can hang only under load.\n";
+    }
+    int n = 0;
+    for (const Cycle &c : cycles) {
+        out << "\nCycle " << ++n << ": ";
+        for (const ChannelId &ch : c.path) out << channel_name(a, ch) << " -> ";
+        out << channel_name(a, c.path[0]) << "\n";
+        if (c.capacity <= 1) {
+            out << "  One of these channels has a single thread serving it, so one interleaving hangs them all.\n";
+        } else {
+            out << "  Every channel here was served by a pool, the smallest by " << c.capacity
+                << " threads in this trace. It hangs only if " << c.capacity
+                << " requests are stuck in this cycle at once, and a pool that grows on demand raises that.\n";
+        }
+        for (size_t i = 0; i < c.path.size(); i++) {
+            auto e = a.edges.find({c.path[i], c.path[(i + 1) % c.path.size()]});
+            if (e != a.edges.end()) print_edge_evidence(a, e->second, out);
         }
     }
     std::map<std::string, long> pulse_lines;
@@ -603,11 +623,13 @@ void print_report(const Analysis &a, const std::vector<Cycle> &cycles, const std
     if (!level.empty()) {
         int top = 0;
         for (const auto &kv : level) top = std::max(top, kv.second);
+        std::set<ChannelId> in_cycle;
+        for (const Cycle &c : cycles) in_cycle.insert(c.path.begin(), c.path.end());
         out << "\nSend hierarchy seen in this trace (a thread should only send to a lower level):\n";
         for (int l = top; l >= 0; l--) {
             std::string names;
             for (const auto &kv : level)
-                if (kv.second == l) names += (names.empty() ? "" : ", ") + channel_name(a, kv.first);
+                if (kv.second == l) names += (names.empty() ? "" : ", ") + channel_name(a, kv.first) + (in_cycle.count(kv.first) ? " (in a cycle)" : "");
             out << "  level " << l << ": " << names << "\n";
         }
     }
@@ -664,11 +686,11 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
     }
     size_t widest = 1;
     for (const auto &r : rows) widest = std::max(widest, r.second.size());
-    const int W = 190, H = 110;
-    int width = (int)widest * W + 40, height = (top + 1) * H + 30;
+    const int W = 190, H = 170, MARGIN = 70;
+    int width = (int)widest * W + 40, height = (top + 1) * H + MARGIN;
     std::map<ChannelId, std::pair<int, int>> pos;
     for (auto &r : rows) {
-        int y = (top - r.first) * H + 20;
+        int y = (top - r.first) * H + MARGIN;
         int gap = width / ((int)r.second.size() + 1);
         for (size_t i = 0; i < r.second.size(); i++) pos[r.second[i]] = {gap * ((int)i + 1), y};
     }
@@ -684,8 +706,10 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
         << html_escape(title) << "</h1><p class=\"small\">" << a.messages << " messages, " << a.receivers.size() << " channels, " << a.edges.size() << " wait edges.</p>";
     if (cycles.empty()) {
         out << "<div class=\"verdict good\">No wait cycles on the paths this trace exercised.</div>";
+    } else if (cycles[0].capacity <= 1) {
+        out << "<div class=\"verdict bad\">Possible deadlock: one unlucky interleaving can hang a cycle below.</div>";
     } else {
-        out << "<div class=\"verdict bad\">Possible deadlock: " << cycles.size() << " wait cycle" << (cycles.size() == 1 ? "" : "s") << ".</div>";
+        out << "<div class=\"verdict good\">No single-thread wait cycles. " << cycles.size() << " cycle" << (cycles.size() == 1 ? "" : "s") << " through thread pools, which can hang only under load.</div>";
     }
     out << "<section class=\"card\"><h2>Who waits for whom</h2><div class=\"scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Wait graph\"><svg width=\"" << width << "\" height=\"" << height
         << "\" viewBox=\"0 0 " << width << " " << height << "\" role=\"img\" aria-label=\"Wait graph of " << a.receivers.size() << " channels, cycles in red\">"
@@ -696,8 +720,19 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
         if (f == pos.end() || t == pos.end()) continue;
         bool isHot = in_cycle.count(kv.first) > 0;
         int x1 = f->second.first, y1 = f->second.second + 40, x2 = t->second.first, y2 = t->second.second;
-        if (y2 <= y1 - 40) { y1 = f->second.second; y2 = t->second.second + 40; }  // arrow going up
-        int mx = (x1 + x2) / 2 + (y2 < y1 ? 40 : 0), my = (y1 + y2) / 2;
+        int mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        if (f->second.second == t->second.second) {
+            // Same level: rightward arcs pass under the row and leftward arcs over it, so a pair stays readable.
+            int bend = 34 + std::abs(x1 - x2) / 7;
+            bool right = x2 > x1;
+            y1 = y2 = f->second.second + (right ? 40 : 0);
+            my = y1 + (right ? bend : -bend);
+        } else if (y2 < y1) {
+            y1 = f->second.second;
+            y2 = t->second.second + 40;
+            mx += 40;
+            my = (y1 + y2) / 2;
+        }
         out << "<path d=\"M" << x1 << " " << y1 << " Q" << mx << " " << my << " " << x2 << " " << y2 << "\" fill=\"none\" stroke=\"" << (isHot ? "var(--hot)" : "var(--muted)")
             << "\" stroke-width=\"" << (isHot ? 2.5 : 1.2) << "\" marker-end=\"url(#" << (isHot ? "h" : "a") << ")\"><title>" << html_escape(channel_name(a, kv.first.first)) << " waits for " << html_escape(channel_name(a, kv.first.second)) << "</title></path>";
     }
@@ -717,8 +752,8 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
         out << "<section class=\"card\"><h2>Cycle " << ++n << "</h2><p class=\"mono\">";
         for (const ChannelId &ch : c.path) out << html_escape(channel_name(a, ch)) << " &rarr; ";
         out << html_escape(channel_name(a, c.path[0])) << "</p><p>"
-            << (c.capacity <= 1 ? "A single thread serves one of these channels, so one unlucky interleaving hangs them all."
-                                : "It hangs when " + std::to_string(c.capacity) + " requests are in this cycle at once.")
+            << (c.capacity <= 1 ? "One of these channels has a single thread serving it, so one interleaving hangs them all."
+                                : "It hangs only if " + std::to_string(c.capacity) + " requests are stuck in this cycle at once.")
             << "</p></section>";
     }
     out << "<section class=\"card\"><h2>Evidence</h2><div class=\"scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Edges\"><table><thead><tr><th scope=\"col\">Channel</th><th scope=\"col\">Waits for</th><th scope=\"col\">Sender</th><th scope=\"col\">Message</th><th scope=\"col\">Seen</th><th scope=\"col\">Longest wait</th></tr></thead><tbody>";
@@ -731,6 +766,78 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
     out << "</tbody></table></div></section></main></body></html>\n";
 }
 
+// A hung thread produces no events, so a trace of a system that has already stopped shows nothing.
+// pidin still shows who each blocked thread waits for. Returns the exit code.
+int check_snapshot(std::istream &in, bool quiet) {
+    struct Proc {
+        std::string name;
+        std::map<int, std::string> waits;  // pid it waits for -> "tid STATE"
+        bool can_answer = false;
+    };
+    std::map<int, Proc> procs;
+    std::string line;
+    int rows = 0;
+    while (std::getline(in, line)) {
+        std::istringstream row(line);
+        std::string pid_s, tid_s, name, prio, state, blocked;
+        if (!(row >> pid_s >> tid_s >> name >> prio >> state)) continue;
+        if (pid_s.find_first_not_of("0123456789") != std::string::npos || tid_s.find_first_not_of("0123456789") != std::string::npos) continue;
+        row >> blocked;
+        rows++;
+        Proc &p = procs[std::atoi(pid_s.c_str())];
+        size_t slash = name.rfind('/');
+        p.name = slash == std::string::npos ? name : name.substr(slash + 1);
+        if (state == "RECEIVE" || state == "READY" || state == "RUNNING") p.can_answer = true;
+        if ((state == "SEND" || state == "REPLY") && !blocked.empty()) p.waits[std::atoi(blocked.c_str())] = tid_s + " " + state;
+    }
+    if (rows == 0) {
+        std::cerr << "sendgraph: no pidin rows in the input. Expected the output of plain pidin.\n";
+        return 2;
+    }
+    // Keep only processes that cannot answer and wait for another such process, until nothing changes.
+    std::set<int> stuck;
+    for (const auto &kv : procs)
+        if (!kv.second.can_answer && !kv.second.waits.empty()) stuck.insert(kv.first);
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (auto it = stuck.begin(); it != stuck.end();) {
+            bool waits_on_stuck = false;
+            for (const auto &w : procs[*it].waits) waits_on_stuck |= stuck.count(w.first) > 0;
+            if (!waits_on_stuck) {
+                it = stuck.erase(it);
+                changed = true;
+            } else {
+                ++it;
+            }
+        }
+    }
+    // Something else may wait on this set without being part of the loop, so walk to the loop itself.
+    if (stuck.empty()) {
+        if (!quiet) std::cout << "Sendgraph: no deadlock in this snapshot of " << procs.size() << " processes.\n";
+        return 0;
+    }
+    int at = *stuck.begin();
+    std::vector<int> walk;
+    while (std::find(walk.begin(), walk.end(), at) == walk.end()) {
+        walk.push_back(at);
+        for (const auto &w : procs[at].waits)
+            if (stuck.count(w.first)) {
+                at = w.first;
+                break;
+            }
+    }
+    walk.erase(walk.begin(), std::find(walk.begin(), walk.end(), at));
+    if (!quiet) {
+        std::cout << "DEADLOCK NOW: these processes wait for each other, and none has a thread free to answer.\n";
+        for (size_t i = 0; i < walk.size(); i++) {
+            const Proc &p = procs[walk[i]];
+            int next = walk[(i + 1) % walk.size()];
+            std::cout << "  " << p.name << " (pid " << walk[i] << ", thread " << p.waits.at(next) << ") waits for " << procs[next].name << "\n";
+        }
+    }
+    return 1;
+}
+
 int usage() {
     std::cerr << "usage: traceprinter -f trace.kev | sendgraph [options]\n"
                  "       sendgraph [options] trace.txt\n"
@@ -738,7 +845,9 @@ int usage() {
                  "  --json FILE   write the result as JSON\n"
                  "  --html FILE   write a self-contained report\n"
                  "  --quiet       no text report; use the exit code\n"
-                 "Exit code: 0 no cycle, 1 at least one cycle, 2 the input is not a usable trace.\n";
+                 "  --strict      a cycle through thread pools also fails the exit code\n"
+                 "       pidin | sendgraph --snapshot     checks a system that has already stopped\n"
+                 "Exit code: 0 clean, 1 a cycle a single interleaving can hang, 2 the input is not usable.\n";
     return 2;
 }
 
@@ -746,13 +855,15 @@ int usage() {
 
 int main(int argc, char **argv) {
     std::string input, dot, json, html;
-    bool quiet = false;
+    bool quiet = false, strict = false, snapshot = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--dot" && i + 1 < argc) dot = argv[++i];
         else if (arg == "--json" && i + 1 < argc) json = argv[++i];
         else if (arg == "--html" && i + 1 < argc) html = argv[++i];
         else if (arg == "--quiet") quiet = true;
+        else if (arg == "--strict") strict = true;
+        else if (arg == "--snapshot") snapshot = true;
         else if (arg == "--help" || arg == "-h") return usage();
         else if (!arg.empty() && arg[0] == '-' && arg != "-") return usage();
         else input = arg;
@@ -766,6 +877,7 @@ int main(int argc, char **argv) {
         }
     }
     std::istream &in = file.is_open() ? file : std::cin;
+    if (snapshot) return check_snapshot(in, quiet);
 
     Analysis a;
     Parser parser(a);
@@ -812,5 +924,7 @@ int main(int argc, char **argv) {
         std::ofstream f(html);
         write_html(a, cycles, level, "Sendgraph report", f);
     }
-    return cycles.empty() ? 0 : 1;
+    for (const Cycle &c : cycles)
+        if (strict || c.capacity <= 1) return 1;
+    return 0;
 }

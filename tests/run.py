@@ -60,12 +60,12 @@ class Trace:
         return "\n".join(self.lines) + "\n"
 
 
-def analyze(trace):
+def analyze(trace, *flags):
     with tempfile.TemporaryDirectory() as d:
         path, out = os.path.join(d, "t.txt"), os.path.join(d, "r.json")
         with open(path, "w") as f:
             f.write(trace if isinstance(trace, str) else trace.text())
-        p = subprocess.run([TOOL, path, "--json", out, "--html", os.path.join(d, "r.html"), "--dot", os.path.join(d, "r.dot")], capture_output=True, text=True)
+        p = subprocess.run([TOOL, path, "--json", out, "--html", os.path.join(d, "r.html"), "--dot", os.path.join(d, "r.dot"), *flags], capture_output=True, text=True)
         result = json.load(open(out)) if os.path.exists(out) else None
         return p.returncode, p.stdout + p.stderr, result
 
@@ -134,9 +134,11 @@ def test_thread_pools_raise_the_number_of_requests_needed():
     t.call((100, 1), (200, 1), 1)
     t.call((200, 2), (100, 3), 1)
     code, out, r = analyze(t)
-    assert code == 1, out
+    assert code == 0, out
     assert r["cycles"][0]["threads_needed"] == 2, r
-    assert "2 requests" in out, out
+    assert "2 requests" in out and "only under load" in out, out
+    code, out, r = analyze(t, "--strict")
+    assert code == 1, out
 
 
 def test_a_thread_sending_to_its_own_channel_is_a_cycle():
@@ -218,6 +220,40 @@ def test_known_message_types_are_named():
     t.call((100, 1), (200, 1), 1, mtype=0x101)
     code, out, r = analyze(t)
     assert code == 0 and r["edges"][0]["message"] == "_IO_READ", r
+
+
+HUNG = """     pid tid name               prio STATE       Blocked
+  100001   1 ./sensor            10r REPLY       100002
+  100001   2 ./sensor            10r NANOSLEEP
+  100002   1 ./control           10r SEND        100003
+  100003   1 ./logger            10r SEND        100001
+       1   1 /proc/boot/procnto  0f  READY
+"""
+
+
+def snapshot(text):
+    return subprocess.run([TOOL, "--snapshot"], input=text, capture_output=True, text=True)
+
+
+def test_a_snapshot_shows_a_deadlock_that_has_already_happened():
+    p = snapshot(HUNG)
+    assert p.returncode == 1 and "DEADLOCK NOW" in p.stdout, p.stdout + p.stderr
+    assert "sensor (pid 100001, thread 1 REPLY) waits for control" in p.stdout, p.stdout
+
+
+def test_a_snapshot_with_a_free_thread_is_not_a_deadlock():
+    p = snapshot(HUNG + "  100002   2 ./control           10r RECEIVE     1\n")
+    assert p.returncode == 0, p.stdout
+
+
+def test_a_process_waiting_on_a_loop_is_not_named_as_part_of_it():
+    p = snapshot(HUNG + "  100009   1 ./client            10r REPLY       100001\n")
+    assert p.returncode == 1 and "client" not in p.stdout, p.stdout
+
+
+def test_a_snapshot_of_something_else_is_refused():
+    p = snapshot("hello\n")
+    assert p.returncode == 2, p.stdout
 
 
 if __name__ == "__main__":

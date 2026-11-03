@@ -1,6 +1,7 @@
 #!/bin/sh
 # Runs on the target. Starts one build of the plant, traces it, stops it.
 # usage: run.sh <plain|thread|pulse> [sendgraph options]
+# The rates are low enough that a hang during these few seconds is rare, which is the point.
 variant=$1; [ $# -gt 0 ] && shift
 cd "$(dirname "$0")"
 case "$variant" in
@@ -9,11 +10,11 @@ case "$variant" in
   pulse)  sensor_args="";   logger_args="-a" ;;
   *) echo "usage: run.sh <plain|thread|pulse>" >&2; exit 2 ;;
 esac
-./logger $logger_args >/dev/null 2>&1 & l=$!
+./logger -r 500000 $logger_args >/dev/null 2>&1 & l=$!
 ./control >/dev/null 2>&1 & c=$!
-./sensor $sensor_args >/dev/shmem/sensor.out 2>&1 & s=$!
+./sensor -p 10000 $sensor_args >/dev/shmem/sensor.out 2>&1 & s=$!
 sleep 1
-SG_KEV=/dev/shmem/$variant.kev ./sgcapture 2 "$@"
+SG_KEV=/dev/shmem/$variant.kev ./sgcapture 3 "$@"
 rc=$?
 kill -9 $l $c $s 2>/dev/null
 exit $rc
