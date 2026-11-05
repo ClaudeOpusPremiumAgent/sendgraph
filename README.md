@@ -2,7 +2,7 @@
 
 Finds message-passing deadlocks on QNX 8.0 before they happen. It reads a few seconds of a healthy kernel trace and reports the cycle of blocking `MsgSend` calls that can hang your system, even when nothing hung during the trace.
 
-For QNX 8.0, on QEMU x86_64 or any target that can run `tracelogger`. Built with `qcc` from SDP 8.0 (GCC 12.2) for the target and `g++` for the host. Written by an AI model, with a human operator: see [How this was built](#how-this-was-built). New to this? The [tutorial](TUTORIAL.md) walks through finding this bug by hand on QNX 8.0 in QEMU, then with the tool.
+For QNX 8.0, on QEMU x86_64 or any target that can run `tracelogger`. Built with `qcc` from SDP 8.0 (GCC 12.2) for the target and `g++` for the host. Written by an AI model, with a human operator: see [How this was built](#how-this-was-built). [Watch the 2:42 demo film](https://youtu.be/5i9uGEgfJJo). New to this? The [tutorial](TUTORIAL.md) walks through finding this bug by hand on QNX 8.0 in QEMU, then with the tool.
 
 ## The problem
 
