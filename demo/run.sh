@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs on the target. Starts one build of the plant, traces it, stops it.
 # usage: run.sh <plain|thread|pulse> [sendgraph options]
-# The rates are low enough that a hang during these few seconds is rare, which is the point.
+# At these rates 27 of 28 runs survived the capture, so the report comes from a healthy trace. At 10 ms and 1 s, 14 of 20 did.
 variant=$1; [ $# -gt 0 ] && shift
 cd "$(dirname "$0")"
 case "$variant" in
@@ -12,7 +12,7 @@ case "$variant" in
 esac
 ./logger -r 1000000 $logger_args >/dev/null 2>&1 & l=$!
 ./control >/dev/null 2>&1 & c=$!
-./sensor -p 10000 $sensor_args >/dev/shmem/sensor.out 2>&1 & s=$!
+./sensor -p 100000 $sensor_args >/dev/shmem/sensor.out 2>&1 & s=$!
 sleep 1
 SG_KEV=/dev/shmem/$variant.kev ./sgcapture 3 "$@"
 rc=$?

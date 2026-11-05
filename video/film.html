@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sendgraph demo film</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=block" rel="stylesheet">
+<style>
+  :root { --bg: #f4f6f4; --card: #fff; --ink: #17211c; --muted: #5a6a62; --line: #d7dfda; --good: #0f6b52; --good-bg: #dcefe8; --bad: #b3261e; --bad-bg: #fae6e3; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+  .scene { position: absolute; inset: 0; padding: 84px 120px; display: none; flex-direction: column; gap: 34px; justify-content: center; }
+  h1 { font-size: 96px; line-height: 1.08; font-weight: 700; letter-spacing: -0.025em; }
+  h2 { font-size: 68px; line-height: 1.12; font-weight: 700; letter-spacing: -0.02em; }
+  p { font-size: 50px; line-height: 1.28; }
+  .muted { color: var(--muted); }
+  .small { font-size: 38px; line-height: 1.3; }
+  .kicker { font: 700 32px "JetBrains Mono", monospace; letter-spacing: 0.06em; color: var(--good); }
+  .kicker.bad { color: var(--bad); }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .loop { font: 700 64px "JetBrains Mono", monospace; color: var(--bad); }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; font-size: 50px; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 22px 36px; }
+  .row.head { background: none; border: 0; font-size: 34px; color: var(--muted); padding-block: 0; }
+  .row b { font: 700 54px "JetBrains Mono", monospace; }
+  .row.bad b { color: var(--bad); } .row.ok b { color: var(--good); }
+  .banner { font-size: 50px; line-height: 1.22; font-weight: 600; background: var(--good-bg); color: var(--good); padding: 28px 38px; border-radius: 12px; }
+  .banner.bad { background: var(--bad-bg); color: var(--bad); }
+  .term { padding: 0; }
+  .term .panel { position: absolute; left: 1320px; top: 40px; width: 560px; height: 1000px; display: flex; flex-direction: column; gap: 30px; justify-content: center; }
+  .term .panel p { font-size: 42px; line-height: 1.24; }
+  .term .panel .banner { font-size: 40px; padding: 22px 28px; }
+  .term .panel .kicker { font-size: 26px; }
+  #screen { position: absolute; left: 40px; top: 40px; width: 1240px; height: 1000px; border-radius: 10px; display: none; }
+  .shot { border-radius: 12px; border: 2px solid var(--line); height: 800px; align-self: center; }
+  .list { display: grid; gap: 30px; }
+  .list div { font-size: 48px; line-height: 1.24; padding-left: 36px; border-left: 8px solid var(--good); }
+  .list.bad div { border-color: var(--bad); }
+</style>
+</head>
+<body>
+<img id="screen" alt="">
+
+<section class="scene" data-voice="v1">
+  <h1 class="a" data-cue="On Q N X">Three services. One unlucky moment.</h1>
+  <p class="a" data-cue="A thread that sends">A thread that sends cannot receive until the answer comes back.</p>
+  <div class="a loop" data-cue="If three services">control → logger → sensor → control</div>
+</section>
+
+<section class="scene" data-voice="v2">
+  <div class="kicker a" data-cue="Testing">MEASURED ON QNX 8.0 IN QEMU. READING EVERY 10 MS.</div>
+  <div class="row head a" data-cue="Testing"><span>Log rotates every</span><span>Runs that hung</span><span>Limit per run</span></div>
+  <div class="row bad a" data-cue="rotating the log"><span class="mono">499 ms</span><b>6 of 6</b><span>60 s</span></div>
+  <div class="row ok a" data-cue="At five hundred"><span class="mono">500 ms</span><b>3 of 9</b><span>60 or 300 s</span></div>
+  <div class="banner a" data-cue="One millisecond">One millisecond decides whether your soak test sees the bug.</div>
+</section>
+
+<section class="scene" data-voice="v3">
+  <h1 class="a" data-cue="Send graph">Sendgraph</h1>
+  <p class="a" data-cue="Send graph finds">Finds the deadlock in a trace of a healthy system.</p>
+  <p class="a muted" data-cue="It reads">From a few seconds of the kernel's own log, before anything hangs.</p>
+</section>
+
+<section class="scene term" data-voice="a" data-from="0" data-to="11.9">
+  <div class="panel">
+    <div class="kicker a" data-cue="This is">SCREEN RECORDING ON QNX 8.0 IN QEMU. PAUSES ADDED FOR NARRATION.</div>
+    <p class="a" data-cue="Here is">The plain build, working normally.</p>
+    <p class="a muted" data-cue="We trace">Traced for 3 seconds.</p>
+  </div>
+</section>
+
+<section class="scene term" data-voice="b" data-from="11.9" data-to="17.99">
+  <div class="panel">
+    <div class="banner a" data-cue="Nothing hung">Nothing hung.</div>
+    <p class="a" data-cue="Control waits">Sendgraph names the loop anyway, with the evidence for each wait.</p>
+    <div class="banner bad a" data-cue="Exit code">Exit code 1 fails your build.</div>
+  </div>
+</section>
+
+<section class="scene" data-voice="c" style="padding-block: 40px; gap: 20px">
+  <div class="kicker a" data-cue="It also">THE HTML REPORT FROM THAT TRACE</div>
+  <img class="a shot" data-cue="It also" src="out/report.png" alt="">
+</section>
+
+<section class="scene term" data-voice="d" data-from="17.99" data-to="37.02">
+  <div class="panel">
+    <div class="kicker a" data-cue="There are">THE TWO FIXES, RECORDED</div>
+    <p class="a" data-cue="Let the sensor"><b>thread:</b> sensor answers on a separate thread and channel.</p>
+    <p class="a" data-cue="or let the logger"><b>pulse:</b> logger asks with a pulse, which never blocks.</p>
+    <div class="banner a" data-cue="Both builds">Clean. 0 hangs in 10 soak runs at the rates that hung most.</div>
+  </div>
+</section>
+
+<section class="scene term" data-voice="e" data-from="37.02" data-to="47.34">
+  <div class="panel">
+    <div class="kicker bad a" data-cue="So was">WAS THE PREDICTION RIGHT?</div>
+    <p class="a" data-cue="The same">The same plain build, at stress rates.</p>
+    <div class="banner bad a" data-cue="It hangs">It hangs within seconds.</div>
+  </div>
+</section>
+
+<section class="scene term" data-voice="f" data-from="47.34" data-to="55.13">
+  <div class="panel">
+    <div class="kicker a" data-cue="Pid in">pidin, THE STANDARD QNX TOOL</div>
+    <p class="a" data-cue="Pid in">Three blocked threads, each waiting for the next.</p>
+  </div>
+</section>
+
+<section class="scene term" data-voice="g" data-from="55.13" data-to="64.06">
+  <div class="panel">
+    <div class="banner bad a" data-cue="Send graph reads">DEADLOCK NOW</div>
+    <p class="a" data-cue="It is the loop">The same loop it predicted from the healthy trace.</p>
+  </div>
+</section>
+
+<section class="scene" data-voice="h">
+  <h2 class="a" data-cue="Every Q N X">Every QNX system has this graph.</h2>
+  <div class="list">
+    <div class="a" data-cue="because drivers">Drivers and services are separate processes behind message passing.</div>
+    <div class="a" data-cue="In cars">In cars, medical devices and factories, find this bug on the bench.</div>
+    <div class="a" data-cue="Send graph needs">No code changes. Only a kernel trace.</div>
+    <div class="a" data-cue="and its exit code">The exit code goes in CI.</div>
+  </div>
+</section>
+
+<section class="scene" data-voice="i">
+  <h2 class="a" data-cue="It has limits">It has limits.</h2>
+  <div class="list bad">
+    <div class="a" data-cue="It only sees">It sees the paths the trace exercised, like lockdep.</div>
+    <div class="a" data-cue="and only message">Message passing only. A mutex held across a send is not modelled.</div>
+    <div class="a" data-cue="so a clean">A clean report is evidence, not proof.</div>
+  </div>
+</section>
+
+<section class="scene" data-voice="j">
+  <h1 class="a" data-cue="Send graph">Sendgraph</h1>
+  <p class="a mono" data-cue="Send graph">github.com/ClaudeOpusPremiumAgent/sendgraph</p>
+  <p class="a" data-cue="All of the code">Written by Claude Opus 5.5, an AI model, with a human operator.</p>
+  <p class="a" data-cue="The repository">Source, tests, real QNX traces and a step-by-step tutorial.</p>
+  <p class="a small muted" data-cue="The repository">QNX Global Hackathon. Developer Tooling &amp; Host Tools. The voice is synthetic.</p>
+</section>
+
+<script>
+const clamp = (x) => Math.min(1, Math.max(0, x));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const screen = document.getElementById("screen");
+const FPS = 15, LEAD = 0.5, TAIL = 0.7;
+let scenes = [];
+
+async function start() {
+  const [text, spoken] = await Promise.all([fetch("narration.json").then((r) => r.json()), fetch("out/voice/durations.json").then((r) => r.json())]);
+  let at = 0;
+  scenes = [...document.querySelectorAll(".scene")].map((el) => {
+    const key = el.dataset.voice, term = el.classList.contains("term");
+    const clip = term ? +el.dataset.to - +el.dataset.from : 0;
+    const length = Math.max(clip, LEAD + spoken[key] + TAIL);
+    const scene = { el, key, term, from: at, to: at + length, voiceAt: at + LEAD, clipFrom: +el.dataset.from || 0, clipTo: +el.dataset.to || 0 };
+    el.querySelectorAll(".a").forEach((n) => {
+      const i = text[key].indexOf(n.dataset.cue);
+      if (i < 0) throw new Error("no cue: " + n.dataset.cue);
+      n.dataset.at = LEAD + spoken[key] * (i / text[key].length);
+    });
+    at += length;
+    return scene;
+  });
+  window.TIMELINE = scenes.map((s) => [s.key, +s.voiceAt.toFixed(3)]);
+  window.DURATION = at;
+  await window.seek(+(new URLSearchParams(location.search).get("t") ?? 0));
+}
+
+// Shows the frame for film time t. Resolves once the recorded frame has decoded.
+window.seek = async (t) => {
+  let want = null;
+  for (const s of scenes) {
+    const on = t >= s.from && t < s.to;
+    s.el.style.display = on ? "flex" : "none";
+    if (!on) continue;
+    const local = t - s.from;
+    s.el.style.opacity = s.term ? 1 : Math.min(clamp(local / 0.3), clamp((s.to - t) / 0.3));
+    s.el.querySelectorAll(".a").forEach((n) => {
+      const p = easeOut(clamp((local - +n.dataset.at) / 0.5));
+      n.style.opacity = p;
+      n.style.transform = `translateY(${(1 - p) * 18}px)`;
+    });
+    // Real speed; the last frame holds while the narration finishes.
+    if (s.term) want = Math.round(Math.min(s.clipFrom + local, s.clipTo) * FPS) + 1;
+  }
+  screen.style.display = want === null ? "none" : "block";
+  if (want !== null) {
+    const src = `out/session/${String(want).padStart(5, "0")}.jpg`;
+    if (!screen.src.endsWith(src)) { screen.src = src; await screen.decode(); }
+  }
+};
+start();
+</script>
+</body>
+</html>

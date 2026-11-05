@@ -589,7 +589,7 @@ void print_report(const Analysis &a, const std::vector<Cycle> &cycles, const std
         out << "No wait cycles on the paths this trace exercised.\n";
     } else if (certain) {
         out << "POSSIBLE DEADLOCK: " << certain << " wait cycle" << (certain == 1 ? "" : "s")
-            << " that one unlucky interleaving can hang. The trace does not have to contain the hang for this to be true.\n";
+            << " that one unlucky interleaving can hang.\nThe trace does not have to contain the hang for this to be true.\n";
     } else {
         out << "No single-thread wait cycles. " << cycles.size() << " cycle" << (cycles.size() == 1 ? "" : "s")
             << " through thread pools, which can hang only under load.\n";
@@ -687,7 +687,7 @@ void write_html(const Analysis &a, const std::vector<Cycle> &cycles, const std::
     size_t widest = 1;
     for (const auto &r : rows) widest = std::max(widest, r.second.size());
     const int W = 190, H = 170, MARGIN = 70;
-    int width = (int)widest * W + 40, height = (top + 1) * H + MARGIN;
+    int width = ((int)widest + 1) * W, height = (top + 1) * H + MARGIN;
     std::map<ChannelId, std::pair<int, int>> pos;
     for (auto &r : rows) {
         int y = (top - r.first) * H + MARGIN;

@@ -1,0 +1,15 @@
+{
+  "v1": "On Q N X, services talk through blocking messages. A thread that sends cannot receive until the answer comes back. If three services send in a circle, one unlucky moment stops all three, for good.",
+  "v2": "Testing rarely catches it. In this small plant, rotating the log every four hundred and ninety nine milliseconds hung six runs out of six. At five hundred milliseconds, six runs out of nine passed their whole soak. One millisecond decides whether your test sees the bug.",
+  "v3": "Send graph finds that bug in a trace of a healthy system. It reads a few seconds of the kernel's own log, and reports the loop before anything hangs.",
+  "a": "This is Q N X eight, running in Q emu. Here is the plain build, working normally. We trace it for three seconds.",
+  "b": "Nothing hung. Send graph names the loop anyway. Control waits for logger, logger waits for sensor, and sensor waits for control. Exit code one fails your build.",
+  "c": "It also writes a report you can open: who waits for whom, with the cycle in red.",
+  "d": "There are two ways out. Let the sensor answer on a separate thread and channel, or let the logger ask with a pulse, which never blocks. Both builds come out clean, and ten soak runs at the rates that hung the most produced no hang.",
+  "e": "So was the prediction right? The same plain build, at stress rates. It hangs within seconds.",
+  "f": "Pid in shows three blocked threads, each waiting for the next.",
+  "g": "Send graph reads that same output and confirms it. Deadlock now. It is the loop it predicted from the healthy trace.",
+  "h": "Every Q N X system has this graph, because drivers and services are separate processes behind message passing. In cars, medical devices and factories, a service that silently stops answering is a bug you want to find on the bench. Send graph needs no code changes, only a kernel trace, and its exit code goes in C I.",
+  "i": "It has limits. It only sees the paths the trace exercised, and only message passing, so a clean report is evidence, not proof.",
+  "j": "Send graph. All of the code, the tests and this film were made by Claude, an AI model, with a human operator. The repository has everything you need to run it, and a step by step tutorial."
+}

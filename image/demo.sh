@@ -5,8 +5,14 @@ set -e
 cd "$(dirname "$0")/.."
 for v in plain thread pulse; do
   echo "=== $v build of the plant, traced for 3 healthy seconds"
-  vm_ssh "/data/sendgraph/run.sh $v" || echo "(exit code $?)"
-  # A plant that has already hung leaves no trace to copy; sgcapture has reported it by snapshot.
+  # The plain build can hang before its trace ends. That is the bug, but the point here is the healthy trace.
+  for attempt in 1 2 3 4 5 6; do
+    rc=0; vm_ssh "/data/sendgraph/run.sh $v" > "image/out/$v.out" || rc=$?
+    grep -q 'DEADLOCK NOW' "image/out/$v.out" || break
+    echo "(attempt $attempt hung before its trace ended, which is this same bug: trying again)"
+  done
+  cat "image/out/$v.out"; [ "$rc" = 0 ] || echo "(exit code $rc)"
+  # A plant that hung leaves no useful trace; sgcapture has reported it by snapshot.
   if vm_get "/dev/shmem/$v.kev" "image/out/$v.kev" 2>/dev/null; then
     traceprinter -f "image/out/$v.kev" | build/host/sendgraph --quiet --html "image/out/report-$v.html" || true
   fi

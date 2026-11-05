@@ -6,10 +6,13 @@ seconds=${1:-3}
 [ $# -gt 0 ] && shift
 kev=${SG_KEV:-/dev/shmem/sendgraph.kev}
 here=$(dirname "$0")
-# A stopped system produces no trace events and would look clean, so check for that first.
-if ! pidin | "$here/sendgraph" --snapshot --quiet; then
+# A stopped system produces no trace events and would look clean. It can also stop just after
+# the first check, as a real run did, so check again once the trace is done.
+stopped() {
+  pidin | "$here/sendgraph" --snapshot --quiet && return 1
   pidin | "$here/sendgraph" --snapshot
-  exit 1
-fi
+}
+stopped && exit 1
 tracelogger -w -n 0 -s "$seconds" -f "$kev" >/dev/null 2>&1 || { echo "tracelogger failed. Is this procnto-smp-instr?" >&2; exit 2; }
+stopped && exit 1
 traceprinter -f "$kev" | "$here/sendgraph" "$@"
