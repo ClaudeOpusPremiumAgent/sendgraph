@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs the analyzer on small traces written in traceprinter's format. Each test states one rule.
 usage: tests/run.py [path to sendgraph]"""
-import json, os, subprocess, sys, tempfile
+import json, os, shutil, subprocess, sys, tempfile
 
 TOOL = sys.argv[1] if len(sys.argv) > 1 else "build/host/sendgraph"
 
@@ -254,6 +254,54 @@ def test_a_process_waiting_on_a_loop_is_not_named_as_part_of_it():
 def test_a_snapshot_of_something_else_is_refused():
     p = snapshot("hello\n")
     assert p.returncode == 2, p.stdout
+
+
+def capture(*pidin_outputs):
+    """Runs sgcapture with stand-ins for the QNX tools. Each pidin call prints the next output, then the last again."""
+    trace = Trace()
+    trace.name(1, "a")
+    trace.name(2, "b")
+    trace.receive(2, 1, 1)
+    trace.call((1, 1), (2, 1), 1)
+    with tempfile.TemporaryDirectory() as d:
+        shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "sgcapture"), d)
+        os.symlink(os.path.abspath(TOOL), f"{d}/sendgraph")
+        for i, text in enumerate(pidin_outputs):
+            open(f"{d}/pidin.{i}", "w").write(text)
+        open(f"{d}/trace.txt", "w").write(trace.text())
+        scripts = {
+            "pidin": f'n=$(cat {d}/calls 2>/dev/null || echo 0); echo $((n+1)) > {d}/calls\n'
+                     f'[ -f {d}/pidin.$n ] || n={len(pidin_outputs) - 1}; cat {d}/pidin.$n\n',
+            "tracelogger": f"touch {d}/traced\n",
+            "traceprinter": f"cat {d}/trace.txt\n",
+        }
+        for name, body in scripts.items():
+            open(f"{d}/{name}", "w").write("#!/bin/sh\n" + body)
+            os.chmod(f"{d}/{name}", 0o755)
+        env = dict(os.environ, PATH=f"{d}:{os.environ['PATH']}", SG_KEV=f"{d}/x.kev")
+        p = subprocess.run([f"{d}/sgcapture", "1"], capture_output=True, text=True, env=env)
+        return p, os.path.exists(f"{d}/traced")
+
+
+HEALTHY = HUNG + "  100002   2 ./control           10r RECEIVE     1\n"
+
+
+def test_sgcapture_stops_on_a_system_already_hung_and_does_not_trace_it():
+    p, traced = capture(HUNG)
+    assert p.returncode == 1, p.stdout + p.stderr
+    assert p.stdout.count("DEADLOCK NOW") == 1 and "No wait cycles" not in p.stdout, p.stdout
+    assert not traced
+
+
+def test_sgcapture_catches_a_system_that_hangs_after_its_first_check():
+    p, traced = capture(HEALTHY, HUNG)
+    assert p.returncode == 1 and traced, p.stdout + p.stderr
+    assert p.stdout.count("DEADLOCK NOW") == 1 and "No wait cycles" not in p.stdout, p.stdout
+
+
+def test_sgcapture_reports_the_trace_of_a_system_still_running():
+    p, traced = capture(HEALTHY)
+    assert p.returncode == 0 and traced and "No wait cycles" in p.stdout, p.stdout + p.stderr
 
 
 if __name__ == "__main__":

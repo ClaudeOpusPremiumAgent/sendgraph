@@ -11,6 +11,7 @@ here=$(dirname "$0")
 stopped() {
   pidin | "$here/sendgraph" --snapshot --quiet && return 1
   pidin | "$here/sendgraph" --snapshot
+  return 0
 }
 stopped && exit 1
 tracelogger -w -n 0 -s "$seconds" -f "$kev" >/dev/null 2>&1 || { echo "tracelogger failed. Is this procnto-smp-instr?" >&2; exit 2; }

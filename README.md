@@ -65,7 +65,7 @@ make host test
 zcat samples/plain.txt.gz | build/host/sendgraph --html report.html
 ```
 
-See `17 passed`, then the cycle above with exit code 1. Then see the two ways to fix it come out clean:
+See `20 passed`, then the cycle above with exit code 1. Then see the two ways to fix it come out clean:
 
 ```sh
 zcat samples/thread.txt.gz | build/host/sendgraph
